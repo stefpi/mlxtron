@@ -69,6 +69,10 @@ def loss_fn(model, x, y):
     return nn.losses.cross_entropy(logits, y).mean()
 
 def main():
+    world = mx.distributed.init()
+    rank = world.rank()
+    world_size = world.size()
+
     mx.random.seed(SEED)
     # np.random.seed(SEED)
 
@@ -83,6 +87,7 @@ def main():
     # Compile the training step
     def step(model, x, y):
         loss, grads = nn.value_and_grad(model, loss_fn)(model, x, y)
+        grads = nn.average_gradients(grads)
         optimizer.update(model, grads)
         return loss
 
