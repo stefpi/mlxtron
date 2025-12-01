@@ -4,3 +4,4 @@
 
 very minimal implementation and probably will only support LLama architecture for now. If I am goated enough then maybe it will evolve to be MLX-Nano-Tron.
 
+as mac users we operate in the GPU-poor case :sob:
