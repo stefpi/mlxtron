@@ -1,9 +1,14 @@
+from profiler import Profiler
+p = Profiler()
+t = Profiler()
+
 import mlx.core as mx
 import mlx.nn as nn
 import mlx.optimizers as optim
+from mlxtron.llama import Model
+
 from datasets import load_dataset
 from transformers import AutoTokenizer
-from mlxtron.llama import Model
 
 # Constants
 BATCH_SIZE = 4
@@ -22,10 +27,8 @@ MODEL_ARGS = {
 }
 
 def load_data_and_tokenizer():
-    print("Loading dataset...")
-    dataset = load_dataset("roneneldan/TinyStories", split="train", streaming=True)
+    dataset = load_dataset("roneneldan/TinyStories", split="train", streaming=False)
     
-    print("Loading tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained("gpt2")
     tokenizer.pad_token = tokenizer.eos_token
     return dataset, tokenizer
@@ -35,13 +38,9 @@ def batch_iterate(dataset, tokenizer, batch_size, block_size):
     batch = []
     for example in dataset:
         text = example["text"]
-        # Tokenize
         tokens = tokenizer.encode(text)
-        
-        # Skip short sequences for simplicity or pad? 
-        # For this simple script, we'll just concatenate and chunk, or just take sequences that fit.
-        # Let's try a simple approach: truncate or pad to block_size.
-        
+
+        # truncate or pad to block_size.
         if len(tokens) > block_size:
             tokens = tokens[:block_size]
         else:
@@ -54,59 +53,39 @@ def batch_iterate(dataset, tokenizer, batch_size, block_size):
             yield mx.array(batch)
             batch = []
 
-def loss_fn(model, x, y):
-    logits = model(x)
-    # We want to predict the next token, so targets are x shifted by 1.
-    # However, the standard way is usually passing inputs and targets.
-    # Here we passed x as both input and target source.
-    # logits shape: [B, L, V]
-    # y shape: [B, L]
-    
-    # Cross entropy expects logits and targets.
-    # We need to mask padding if we care about correctness, but for a simple script we might ignore it or assume the loss handles it if we passed ignore_index (MLX cross_entropy doesn't support ignore_index directly in the same way as PyTorch usually, check docs or assume standard).
-    # MLX cross_entropy: "Computes the cross entropy loss between logits and targets."
-    
-    return nn.losses.cross_entropy(logits, y).mean()
-
 def main():
     mx.random.seed(SEED)
     # np.random.seed(SEED)
 
     dataset, tokenizer = load_data_and_tokenizer()
-    
-    print("Initializing model...")
     model = Model(**MODEL_ARGS)
     mx.eval(model.parameters())
-    
     optimizer = optim.AdamW(learning_rate=LEARNING_RATE)
-    
-    # Compile the training step
+
+    def loss_fn(x, y):
+        logits = model(x)
+        return nn.losses.cross_entropy(logits, y).mean()
+
     def step(model, x, y):
-        loss, grads = nn.value_and_grad(model, loss_fn)(model, x, y)
+        loss, grads = nn.value_and_grad(model, loss_fn)(x,y)
+        grads = nn.average_gradients(grads)
         optimizer.update(model, grads)
         return loss
-
-    # Create a state for the optimizer to compile it too if needed, but MLX handles it.
     
-    print("Starting training...")
     step_count = 0
     
-    # We need to iterate carefully since it's streaming
     data_iter = batch_iterate(dataset, tokenizer, BATCH_SIZE, BLOCK_SIZE)
-    
+
     try:
+        t.start("total training time")
         for batch in data_iter:
-            # Prepare inputs and targets
-            # x: [B, L-1]
-            # y: [B, L-1] (next token)
-            
-            # Actually, let's just take the batch as is [B, L]
-            # and split it.
             inputs = batch[:, :-1]
             targets = batch[:, 1:]
             
+            p.start("step and eval")
             loss = step(model, inputs, targets)
-            mx.eval(model.parameters(), optimizer.state)
+            mx.eval(loss, model.parameters())
+            p.end()
             
             step_count += 1
             if step_count % 10 == 0:
@@ -115,9 +94,14 @@ def main():
             if step_count >= 100: # Run for 100 steps for demonstration
                 print("Stopping after 100 steps for demonstration.")
                 break
+        t.end()
                 
     except KeyboardInterrupt:
         print("Training interrupted.")
 
 if __name__ == "__main__":
+    mx.reset_peak_memory()
+    print(mx.get_peak_memory())
     main()
+    print(mx.get_peak_memory())
+    

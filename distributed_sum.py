@@ -2,10 +2,12 @@ import mlx.core as mx
 
 data = [1, 2, 3, 4]
 
+world = mx.distributed.init()
+rank = world.rank()
+world_size = world.size()
+
 def main():
-    world = mx.distributed.init()
-    rank = world.rank()
-    world_size = world.size()
+
     print(f"Process {rank + 1}/{world_size} initialized.", flush=True)
 
     data_seg_len = len(data)//world_size
