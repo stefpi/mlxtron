@@ -29,12 +29,15 @@ MODEL_ARGS = {
 world = mx.distributed.init()
 rank = world.rank()
 world_size = world.size()
+shard_percentage = (100 / world_size)
 
 def load_data_and_tokenizer():
-    if (rank == 0): print("Loading dataset...", flush=True)
-    dataset = load_dataset("roneneldan/TinyStories", split="train", streaming=False)
+    # if (rank == 0): print("Loading dataset...", flush=True)
+    shard_start = int(shard_percentage * rank)
+    shard_end = int(shard_start + shard_percentage)
+    dataset = load_dataset("roneneldan/TinyStories", split=f"train[{shard_start}%:{shard_end}%](pct1_dropremainder)", streaming=False)
     
-    if (rank == 0): print("Loading tokenizer...", flush=True)
+    # if (rank == 0): print("Loading tokenizer...", flush=True)
     tokenizer = AutoTokenizer.from_pretrained("gpt2")
     tokenizer.pad_token = tokenizer.eos_token
     return dataset, tokenizer
@@ -83,7 +86,7 @@ def main():
     data_iter = batch_iterate(dataset, tokenizer, BATCH_SIZE, BLOCK_SIZE)
 
     try:
-        t.start("total training time")
+        # if (rank == 0): t.start("total training time")
         for batch in data_iter:
             if (rank == 0):
                 inputs = batch[0:2, :-1]
@@ -98,19 +101,16 @@ def main():
             # if (rank == 0): p.end()
             
             step_count += 1
-            if step_count % 10 == 0:
-                if (rank == 0): print(f"Step {step_count}: Loss = {loss.item():.4f}", flush=True)
+            # if step_count % 10 == 0:
+                # if (rank == 0): print(f"Step {step_count}: Loss = {loss.item():.4f}", flush=True)
             
             if step_count >= 100: # Run for 100 steps for demonstration
-                if (rank == 0): print("Stopping after 100 steps for demonstration.", flush=True)
+                # if (rank == 0): print("Stopping after 100 steps for demonstration.", flush=True)
                 break
-        t.end()
+        # if (rank == 0): t.end()
                 
     except KeyboardInterrupt:
         print("Training interrupted.", flush=True)
 
 if __name__ == "__main__":
-    mx.reset_peak_memory()
-    print(mx.get_peak_memory(), flush=True)
     main()
-    print(mx.get_peak_memory(), flush=True)
