@@ -1,6 +1,8 @@
 from typing import Optional, List, Union
 from dataclasses import dataclass
 
+import mlx.core as mx
+
 from mlxtron.config.models import MlxtronConfigs
 
 @dataclass
@@ -98,40 +100,30 @@ class OptimizerArgs:
 @dataclass
 class ParallelismArgs:
     dp: int
-    pp: int
     tp: int
-    # pp_engine: Optional[PipelineEngine] = None
-    # tp_mode: Optional[TensorParallelLinearMode] = None
-    # tp_linear_async_communication: Optional[bool] = None
-    # recompute_layer: bool = False
-    # tp_recompute_allgather: bool = True
+    cp: int
+    ep: int
+    pp: int
 
-    expert_parallel_size: int = 1
-    context_parallel_size: int = 1
-
-    # def __post_init__(self):
-    #     # Conservative defaults
-    #     if self.pp_engine is None:
-    #         self.pp_engine = AllForwardAllBackwardPipelineEngine()
-    #     if self.tp_mode is None:
-    #         self.tp_mode = TensorParallelLinearMode.ALL_REDUCE
-    #     if self.tp_linear_async_communication is None:
-    #         self.tp_linear_async_communication = False
-
-    #     if isinstance(self.pp_engine, str):
-    #         self.pp_engine = cast_str_to_pipeline_engine(self.pp_engine)
-    #     if isinstance(self.tp_mode, str):
-    #         self.tp_mode = TensorParallelLinearMode[self.tp_mode.upper()]
+@dataclass
+class DataLoader:
+    dp: int
+    micro_batch_size: int
+    seq_length: int
+    dataset_name: str
+    tokenizer_name: str
+    num_workers: int
+    num_proc: int
+    grad_acc_steps: int
+    group: mx.distributed.Group
+    subset_name: str = None
+    split: str = "train"
+    num_samples: int = None
 
 @dataclass
 class Config:
     """main config"""
 
     model: ModelArgs
-    data: DataArgs
-    tokenizer: TokenizerArgs
-    tokens: TokensArgs
-    optimizer: OptimizerArgs
+    data: DataLoader
     parallelism: ParallelismArgs
-
-

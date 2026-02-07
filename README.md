@@ -7,3 +7,8 @@ very minimal implementation and probably will only support LLama architecture fo
 as mac users we operate in the GPU-poor case :sob:
 
 read the blog to learn along with me at [stefpi.net/blog/](https://stefpi.net/blog)
+
+
+## design
+
+the benefit of training across multiple macs (aside from the biggest consumer RAM capacity) is the fact that each GPU used in the training network is attached to a significant amount of storage and CPU power. With this it gives us the option to skip many communication/broadcast steps because each device can have the dataset locally and pull only necessary samples into unified memory.
