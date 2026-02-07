@@ -1,6 +1,6 @@
 from mlxtron.config import (
     Config,
-    DataLoader,
+    DataLoaderArgs,
     DataArgs,
     LlamaConfig,
     ModelArgs,
@@ -13,9 +13,11 @@ from mlxtron.config import (
 from mlxtron.data import DistributedTrainer
 from mlxtron.models import Llama
 from mlxtron.utils import IterableDataset
+from mlxtron.data import DataLoader
 
 __all__ = [
     "Config",
+    "DataLoaderArgs",
     "DataLoader",
     "DataArgs",
     "DistributedTrainer",

@@ -106,7 +106,7 @@ class ParallelismArgs:
     pp: int
 
 @dataclass
-class DataLoader:
+class DataLoaderArgs:
     dp: int
     micro_batch_size: int
     seq_length: int
@@ -125,5 +125,5 @@ class Config:
     """main config"""
 
     model: ModelArgs
-    data: DataLoader
+    data: DataLoaderArgs
     parallelism: ParallelismArgs

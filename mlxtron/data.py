@@ -1,25 +1,82 @@
 
 from pathlib import Path
 from typing import Union
-from datasets import load_dataset
-from transformers import AutoTokenizer
+from functools import partial
 
 import mlx.core as mx
 import mlx.nn as nn
-
+import mlx.data as dx
 from mlxtron.config.config import Config, DataLoader
+
+from datasets import load_dataset
+from transformers import AutoTokenizer
 
 class DataLoader():
     def __init__(self, config: DataLoader):
-        self.config = config
+        data_config = config["data"]
 
-        self.global_batch_size = self.config.micro_batch_size * self.config.grad_acc_steps * self.dp
-        self.num_global_micro_batches = self.global_batch_size // self.config.micro_batch_size
-
-        self.dataset = load_dataset(self.config.dataset_name, split=self.config.split, name=self.config.subset_name, streaming=False)
-        self.tokenizer = AutoTokenizer.from_pretrained(self.config.tokenizer_name)
-
-        if self.config.num_samples:
-            self.dataset = self.dataset.select(range(min(self.config.num_samples, len(self.dataset))))
+        self.group = config["group"]
+        self.world_size = self.group.world_size()
+        self.rank = self.group.rank()
         
-        self.tokenized_dataset = self.tokenize_dataset(self.dataset, "text", self.config.seq_length, self.config.num_proc)
+        self.dataset_name = data_config["dataset_name"]
+        tokenizer_name = data_config["tokenizer_name"]
+        
+        self.subset = data_config.get("subset_name")
+        self.data_split = data_config.get("split", "train")
+        self.num_samples = data_config.get("num_samples")
+
+        self.text_key = "text"
+        self.seq_length = data_config["seq_length"]
+        self.micro_batch_size = data_config["micro_batch_size"]
+        self.grad_acc_steps = data_config.get("grad_acc_steps", 1)
+        self.per_rank_batch_size = self.micro_batch_size * self.grad_acc_steps
+
+        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+            self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
+
+        # shard dataset for rank into hugging face cache system
+        self.dataset = self._shard_dataset()
+
+    def _shard_dataset(self):
+        pct = 100 / self.world_size
+        start = int(pct * self.rank)
+        end = int(start + pct)
+        split_spec = f"{self.split}[{start}%:{end}%]"
+        kwargs = {"streaming": False}
+        if self.subset:
+            kwargs["name"] = self.subset
+        dataset = load_dataset(self.dataset_name, split=split_spec, **kwargs)
+        if self.num_samples is not None:
+            dataset = dataset.select(range(min(self.num_samples, len(dataset))))
+        return dataset
+    
+    def _tokenize_pad(self, example):
+        tokens = self.tokenizer.encode(example[self.text_key])
+        if len(tokens) > self.seq_length:
+            tokens = tokens[:self.seq_length]
+        else:
+            tokens = tokens + [self.tokenizer.eos_token_id] * (self.seq_length - len(tokens))
+        return tokens
+
+    def _batch_to_stream(self, batch):
+        buffer = dx.buffer_from_vector(batch)
+        return (
+            buffer
+            .to_stream()
+            .key_transform("text", lambda x: self._tokenize_pad(x))
+            .batch(self.micro_batch_size)
+            .prefetch(prefetch_size=8, num_threads=4)
+        )
+
+    # bring rank batch size into memory using MLX data stream and tokenize
+    def __iter__(self):
+        batch = []
+        for example in self.dataset:
+            batch.append(example)
+            if len(batch) == self.per_rank_batch_size:
+                yield self._batch_to_stream(batch)
+        if batch:
+            yield self._batch_to_stream(batch)

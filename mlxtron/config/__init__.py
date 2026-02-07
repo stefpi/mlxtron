@@ -1,6 +1,6 @@
 from mlxtron.config.config import (
     Config,
-    DataLoader,
+    DataLoaderArgs,
     DataArgs,
     ModelArgs,
     OptimizerArgs,
@@ -15,7 +15,7 @@ from mlxtron.config.models import LlamaConfig, MlxtronConfigs
 
 __all__ = [
     "Config",
-    "DataLoader",
+    "DataLoaderArgs",
     "DataArgs",
     "ModelArgs",
     "OptimizerArgs",
